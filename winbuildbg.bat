@@ -1,0 +1,1 @@
+python3.12.exe -m PyInstaller --onefile --noconsole --hidden-import plyer.platforms.win.notification -w glisweb-agent.py
