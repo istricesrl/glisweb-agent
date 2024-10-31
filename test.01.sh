@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# elimino il log
+rm -f ./*.log
+
 # avvio il server
 /bin/python3 /home/fabio/glisweb-agent/glisweb-agent.py
 
