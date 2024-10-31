@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # installazione pacchetti
-apt-get install openjdk-17-jdk
-apt-get install libmtdev1
+sudo apt-get install openjdk-17-jdk
+sudo apt-get install libmtdev1
 
 # se non esiste l'ambiente virtuale lo crea
 if [ ! -f pyenv.cfg ]; then
@@ -13,4 +13,4 @@ fi
 source bin/activate
 
 # installa i pacchetti necessari
-pip install pyqt5
+pip install pyqt5 Flask

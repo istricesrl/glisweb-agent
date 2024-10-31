@@ -6,3 +6,5 @@ v*/include/
 v*/lib/
 v*/lib64/
 v*/share/
+*.ini
+*.log
