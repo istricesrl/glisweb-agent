@@ -10,6 +10,7 @@
 # installazione delle librerie
 # ----------------------------
 # pip install flask plyer pystray pillow olefile pywin32 python-daemon pyinstaller notification
+# pip install opencv-python
 #
 # esempi di file config.ini
 # -------------------------
@@ -32,6 +33,7 @@ import sys
 # librerie per il multiprocessing
 import multiprocessing
 from multiprocessing import Process
+from multiprocessing import Manager
 
 # librerie per il server Flask
 from flask import Flask, request, jsonify
@@ -41,6 +43,9 @@ from PIL import Image
 from plyer import notification
 import pystray
 from pystray import Icon, MenuItem
+
+# librerie per la grafica
+import cv2
 
 # librerie per data e ora
 import time
@@ -70,7 +75,7 @@ logformat = '%(asctime)s [%(levelname)s] %(filename)s: %(message)s'
 
 # configurazione del logger
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename='agent.log', encoding='utf-8', format=logformat, level=logging.INFO)
+logging.basicConfig(filename='agent.log', format=logformat, level=logging.INFO)
 
 # log
 logger.info(f'avvio GlisWeb agent v{versione} su {system}')
@@ -78,7 +83,12 @@ logger.info(f'avvio GlisWeb agent v{versione} su {system}')
 # lista dei processi
 processi = []
 
-## FUNZIONI PER IL SERVER FLASK
+# manager per la condivisione di dati tra processi
+global manager, process_data
+manager = Manager()
+process_data = manager.dict()
+
+## FUNZIONI PER LA GESTIONE DEI MODULA
 #
 
 # funzione per il parsing dei comandi Modula
@@ -178,6 +188,33 @@ def lazy_call(comando):
             break
 
     return data
+
+# FUNZIONI PER L'ACQUISIZIONE DI DOCUMENTI DALLA WEBCAM
+#
+
+# funzione per l'acquisizione dei documenti dalla webcam
+def capture_image(process_id):
+
+    process_data[process_id]['elapsed'] = 0
+    
+    process_data[process_id]['status'] = 'started'
+
+    for i in range(30):
+
+        process_data[process_id]['elapsed'] += 1
+
+        logger.info(f'avanzamento mock-up (PID: {process_id}): {process_data[process_id]["elapsed"]}')
+
+        time.sleep(1)
+
+    process_data[process_id]['status'] = 'completed'
+    process_data[process_id]['image_name'] = 'prova.jpg'
+
+    logger.info(f'PID: {process_id} status: {process_data[process_id]["status"]}')
+    logger.info(f'PID: {process_id} image_name: {process_data[process_id]["image_name"]}')
+
+# FUNZIONI PER IL SERVER FLASK
+#
 
 # funzione per l'avvio del server Flask
 def run_server():
@@ -292,7 +329,7 @@ def run_server():
         # restituisco la risposta in formato JSON
         return jsonify(risposta)
 
-    # route per la ricezione dei comandi Modula
+    # route per la gestione dell'acquisizione dei documenti da webcam
     @app.route('/getwebcamdoc', methods=['POST'])
     def get_webcam_document():
 
@@ -311,6 +348,24 @@ def run_server():
             # log
             logger.info('comando ricevuto: %s' % dati['comando'])
 
+            # creazione ID del processo
+            process_id = str(int(time.time()))
+
+            process_data[process_id] = manager.dict()
+
+            process_data[process_id]['status'] = 'created'
+            process_data[process_id]['image_name'] = None
+            process_data[process_id]['error'] = None
+
+            # avvio il sottoprocesso per l'acquisizione dell'immagine
+            p = Process(target=capture_image, args=(process_id,))
+            p.start()
+
+            # rispondo al client con l'ID del processo
+            risposta['status'] = 'OK'
+            risposta['process_id'] = process_id
+            risposta['message'] = 'acquisizione immagine avviata'
+
         else:
 
             # log
@@ -320,6 +375,37 @@ def run_server():
             risposta['errori'].append( 'comando non presente nel JSON' )
 
         # restituisco la risposta in formato JSON
+        return jsonify(risposta)
+
+    # route per la gestione dell'acquisizione delle immagini da webcam
+    @app.route('/getwebcamdocname', methods=['POST'])
+    def get_webcam_document_name():
+
+        # ricevo il process_id dal client
+        dati = request.get_json()
+        process_id = dati.get('process_id')
+
+        # risposta
+        risposta = {'status': '', 'image_name': None, 'error': None}
+
+        # verifico se il process_id è valido
+        if process_id in process_data:
+            risposta['status'] = process_data[process_id]['status']
+
+            if 'elapsed' in process_data[process_id]:
+                risposta['elapsed'] = process_data[process_id]['elapsed']
+            else:
+                risposta['elapsed'] = 'n/a'
+
+            if process_data[process_id]['status'] == 'completed':
+                risposta['image_name'] = process_data[process_id]['image_name']
+            elif process_data[process_id]['status'] == 'error':
+                risposta['error'] = process_data[process_id]['error']
+
+        else:
+            risposta['status'] = 'process_not_found'
+            risposta['error'] = f'ID processo {process_id} non valido'
+
         return jsonify(risposta)
 
     # avvio del server Flask
