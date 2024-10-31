@@ -213,6 +213,9 @@ def run_server():
         # ricezione del JSON
         dati = request.get_json()
 
+        # aggiungo il comando ricevuto alla risposta
+        risposta = { 'status': '', 'risposta':'', 'comando': '', 'info': [], 'errori': [] }
+
         # verifico che che la voce comando esista in dati
         if 'comando' in dati:
 
@@ -220,7 +223,7 @@ def run_server():
             logger.info('comando ricevuto: %s' % dati['comando'])
 
             # aggiungo il comando ricevuto alla risposta
-            risposta = { 'comando': dati['comando'], 'status': '', 'risposta':'', 'info': [], 'errori': [] }
+            risposta['comando'] = dati['comando']
 
             # faccio il parsing del comando
             dettagli = parse_modula( dati['comando'] )
@@ -277,6 +280,36 @@ def run_server():
 
                 # notifica di sistema
                 notification.notify( title=f'comando { dettagli[2] } non valido ricevuto', message=f'comando ricevuto: { dati["comando"] }', timeout=5 )
+
+        else:
+
+            # log
+            logger.error('comando non presente nel JSON')
+
+            # aggiungo l'errore agli errori della risposta
+            risposta['errori'].append( 'comando non presente nel JSON' )
+
+        # restituisco la risposta in formato JSON
+        return jsonify(risposta)
+
+    # route per la ricezione dei comandi Modula
+    @app.route('/getwebcamdoc', methods=['POST'])
+    def get_webcam_document():
+
+        # log
+        logger.info('richiesta di acquisizione immagine da webcam ricevuta')
+
+        # ricezione del JSON
+        dati = request.get_json()
+
+        # aggiungo il comando ricevuto alla risposta
+        risposta = { 'status': '', 'risposta':'', 'comando': '', 'info': [], 'errori': [] }
+
+        # verifico che che la voce comando esista in dati
+        if 'comando' in dati:
+
+            # log
+            logger.info('comando ricevuto: %s' % dati['comando'])
 
         else:
 
