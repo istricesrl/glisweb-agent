@@ -10,7 +10,7 @@
 # installazione delle librerie
 # ----------------------------
 # pip install flask plyer pystray pillow olefile pywin32 python-daemon pyinstaller notification
-# pip install opencv-python
+# pip install opencv-python numpy img2pdf
 #
 # esempi di file config.ini
 # -------------------------
@@ -194,24 +194,89 @@ def lazy_call(comando):
 
 # funzione per l'acquisizione dei documenti dalla webcam
 def capture_image(process_id):
-
-    process_data[process_id]['elapsed'] = 0
     
-    process_data[process_id]['status'] = 'started'
+    try:
+        process_data[process_id]['status'] = 'started'
+        process_data[process_id]['elapsed'] = 0
+        process_data[process_id]['image_names'] = manager.list()
+        process_data[process_id]['error'] = None
 
-    for i in range(30):
+        # Inizializza la webcam
+        cap = cv2.VideoCapture(0)
 
-        process_data[process_id]['elapsed'] += 1
+        # Controlla se la webcam è stata aperta correttamente
+        if not cap.isOpened():
+            logger.error('impossibile aprire la webcam')
+            process_data[process_id]['status'] = 'error'
+            process_data[process_id]['error'] = 'Impossibile aprire la webcam'
+            return
 
-        logger.info(f'avanzamento mock-up (PID: {process_id}): {process_data[process_id]["elapsed"]}')
+        page_count = 0
+        image_names = []
 
-        time.sleep(1)
+        while True:
+            # Leggi un frame dalla webcam
+            ret, frame = cap.read()
+            if not ret:
+                logger.error('errore di acquisizione dell\'immagine')
+                process_data[process_id]['status'] = 'error'
+                process_data[process_id]['error'] = 'errore durante l\'acquisizione dell\'immagine'
+                break
 
-    process_data[process_id]['status'] = 'completed'
-    process_data[process_id]['image_name'] = 'prova.jpg'
+            # Mostra il frame in una finestra
+            cv2.imshow('premi SPAZIO per scattare una foto, Q per terminare', frame)
+
+            # Attendi la pressione di un tasto per 1ms
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord(' '):  # Se viene premuta la barra spaziatrice
+                page_count += 1
+
+                # Elaborazione dell'immagine
+                #processed_image = process_image(frame)
+                image_name = f'page_{page_count}.jpg'
+                image_path = os.path.join('webcam_images', image_name)
+                cv2.imwrite(image_path, processed_image)
+                image_names.append(image_path)
+                logger.info(f'Immagine {image_name} salvata')
+
+                # Aggiorna lo stato nel dizionario condiviso
+                process_data[process_id]['image_names'].append(image_name)
+                process_data[process_id]['last_captured'] = image_name
+
+            elif key == ord('q'):  # Se viene premuto il tasto 'q'
+                logger.info('Terminazione acquisizione immagini')
+                break
+
+        # Rilascia la risorsa della webcam e chiudi le finestre
+        cap.release()
+        cv2.destroyAllWindows()
+
+        if page_count > 0:
+
+            # Genera il PDF
+            pdf_name = f'document_{process_id}.pdf'
+            pdf_path = os.path.join('webcam_images', pdf_name)
+            #with open(pdf_path, "wb") as f:
+            #    f.write(img2pdf.convert([os.path.join('webcam_images', img_name) for img_name in image_names]))
+            logger.info(f'PDF generato: {pdf_path}')
+            process_data[process_id]['status'] = 'completed'
+            process_data[process_id]['pdf_name'] = pdf_name
+
+        else:
+            process_data[process_id]['status'] = 'no_pages_captured'
+            logger.info('Nessuna pagina acquisita')
+
+        process_data[process_id]['status'] = 'completed'
+        process_data[process_id]['document_name'] = 'prova.pdf'
+
+    except Exception as e:
+        logger.error(f'Exception: {e}')
+        process_data[process_id]['status'] = 'error'
+        process_data[process_id]['error'] = str(e)
 
     logger.info(f'PID: {process_id} status: {process_data[process_id]["status"]}')
-    logger.info(f'PID: {process_id} image_name: {process_data[process_id]["image_name"]}')
+    logger.info(f'PID: {process_id} document_name: {process_data[process_id]["document_name"]}')
 
 # FUNZIONI PER IL SERVER FLASK
 #
@@ -354,7 +419,7 @@ def run_server():
             process_data[process_id] = manager.dict()
 
             process_data[process_id]['status'] = 'created'
-            process_data[process_id]['image_name'] = None
+            process_data[process_id]['document_name'] = None
             process_data[process_id]['error'] = None
 
             # avvio il sottoprocesso per l'acquisizione dell'immagine
@@ -386,7 +451,7 @@ def run_server():
         process_id = dati.get('process_id')
 
         # risposta
-        risposta = {'status': '', 'image_name': None, 'error': None}
+        risposta = {'status': '', 'document_name': None, 'error': None}
 
         # verifico se il process_id è valido
         if process_id in process_data:
@@ -398,7 +463,7 @@ def run_server():
                 risposta['elapsed'] = 'n/a'
 
             if process_data[process_id]['status'] == 'completed':
-                risposta['image_name'] = process_data[process_id]['image_name']
+                risposta['document_name'] = process_data[process_id]['document_name']
             elif process_data[process_id]['status'] == 'error':
                 risposta['error'] = process_data[process_id]['error']
 
