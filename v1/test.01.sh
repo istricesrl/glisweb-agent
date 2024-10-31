@@ -3,6 +3,9 @@
 # elimino il log
 rm -f ./*.log
 
+# uccido i processi esistenti
+pkill -f glisweb
+
 # avvio il server
 /bin/python3 /home/fabio/glisweb-agent/glisweb-agent.py
 

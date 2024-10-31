@@ -1,3 +1,8 @@
-build/
-dist/
-*.log
+.github/
+v*/.buildozer/
+v*/bin/
+v*/build/
+v*/include/
+v*/lib/
+v*/lib64/
+v*/share/
