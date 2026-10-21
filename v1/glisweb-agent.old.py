@@ -474,7 +474,6 @@ def run_server():
         return jsonify(risposta)
 
     # avvio del server Flask
-    # app.run(port=5000, threaded=True)
     app.run(port=5000)
 
 ## FUNZIONI PER L'ICONA DI SISTEMA
