@@ -5,7 +5,7 @@ name: build
 on:
   push:
     branches: [ master ]
-    paths: [ 'glisweb-agent.py', '.github/workflows/build.yml' ]
+    paths: [ 'glisweb-agent.py', 'installa.ps1', 'installa.bat', '.github/workflows/build.yml' ]
   workflow_dispatch:
 
 jobs:
@@ -31,14 +31,35 @@ jobs:
       - name: compilazione
         run: python -m PyInstaller --onefile --noconsole --hidden-import plyer.platforms.win.notification -w glisweb-agent.py
 
+      # l'exe accanto a config.ini, icon.png e all'installer, come va estratto sul PC
+      - name: impacchettamento
+        run: cp dist/glisweb-agent.exe .
+
       # senza cryptography nell'exe l'aggiornamento automatico rifiuta tutto, e lo si scoprirebbe solo sul PC del cliente
       - name: controllo
         run: pyi-archive_viewer -l -r dist/glisweb-agent.exe | grep -q cryptography
+
+      # l'installer si prova davvero, con PowerShell 5.1 come sui PC dei clienti: senza agent precedente e senza
+      # segreto, quindi copia, collegamento, avvio e risposta su /stato; il ripristino qui non si prova
+      - name: prova dell'installer
+        shell: powershell
+        run: |
+          $prova = Join-Path $env:RUNNER_TEMP 'installer'
+          New-Item -ItemType Directory -Path $prova -Force | Out-Null
+          Copy-Item glisweb-agent.exe, config.ini, icon.png, installa.ps1 -Destination $prova
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ( Join-Path $prova 'installa.ps1' )
+          $esito = $LASTEXITCODE
+          Get-Content ( Join-Path $prova 'installa.log' )
+          Get-Content ( Join-Path $env:LOCALAPPDATA 'GlisWebAgent\agent.log' ) -ErrorAction SilentlyContinue | Select-Object -Last 20
+          Get-Process -Name 'glisweb-agent' -ErrorAction SilentlyContinue | Stop-Process -Force
+          exit $esito
 
       - uses: actions/upload-artifact@v4
         with:
           name: glisweb-agent-${{ steps.versione.outputs.versione }}
           path: |
-            dist/glisweb-agent.exe
+            glisweb-agent.exe
             config.ini
             icon.png
+            installa.bat
+            installa.ps1

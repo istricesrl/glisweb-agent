@@ -26,6 +26,9 @@
 # delle tracce d'errore, i ../ e i frammenti di shell o SQL li ferma ModSecurity con un 403, che da' anche punti
 # all'IP del PC fino al bando
 #
+# dalla v1.10 GET /stato risponde con la versione, senza toccare il cassetto: la usa installa.ps1, l'installer
+# che si manda al cliente insieme all'exe e al config.ini
+#
 # senza la sezione [server] l'agent si comporta come la v1.6; il segreto NON va nel config.ini versionato
 #
 # pip install flask plyer pystray pillow pywin32 pyinstaller cryptography ( su Windows )
@@ -79,7 +82,7 @@ elif system == "Windows":
 #
 
 # numero di versione
-versione = '0.1.9'
+versione = '0.1.10'
 
 # chiave pubblica Ed25519 degli aggiornamenti, in base64 ( la stampa _aggiornamenti.firma.py chiavi ); vuota = spento
 CHIAVE_PUBBLICA = 'eI6AoDHdrfEnqm4N48ie41GcmsvQk5xYZoNplokF9bI='
@@ -572,6 +575,14 @@ def run_server():
 
         # restituisco la risposta
         return risposta
+
+    # route per lo stato dell'agent: dice che e' vivo e che versione e', senza toccare il cassetto; la usa
+    # installa.ps1 per sapere se l'installazione e' andata a buon fine
+    @app.route('/stato', methods=['GET'])
+    def stato_request():
+
+        # restituisco la risposta
+        return jsonify( { 'status': 'OK', 'versione': versione, 'sistema': system, 'pid': os.getpid() } )
 
     # route per la ricezione dei comandi Modula
     @app.route('/modula', methods=['POST'])

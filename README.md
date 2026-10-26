@@ -22,7 +22,9 @@ mandi i suoi ( log remoto, sotto ).
 | `icon.png`, `icon.ico` | l'icona vicino all'orologio, letta da `icon.png` nella cartella da cui gira l'agent |
 | `.github/workflows/build.yml` | la compilazione dell'exe su Windows |
 | `winbuild.bat` | la stessa compilazione, a mano su un PC Windows |
-| `glisweb-agent.exe` | la vecchia v1.6, tenuta come storia: gli exe nuovi escono dagli artifact di GitHub Actions |
+| `installa.bat`, `installa.ps1` | l'installer da mandare al cliente insieme all'exe e al `config.ini` |
+
+Gli exe escono dagli artifact di GitHub Actions; la vecchia v1.6 ( `glisweb-agent.exe` ) è nella storia git.
 
 Lato deploy servono tre pezzi dello standard glisweb: `/api/log` ( `_src/_api/_log.php` ), che riceve i log,
 `/api/aggiornamenti` ( `_src/_api/_aggiornamenti.php` ), che distribuisce le versioni nuove, e
@@ -34,6 +36,7 @@ Lato deploy servono tre pezzi dello standard glisweb: `/api/log` ( `_src/_api/_l
 all'orologio ( pystray ), notifiche di sistema con plyer. Su Windows si distribuisce come exe compilato con
 PyInstaller, su Linux gira come daemon. Accetta tre comandi Modula, nella forma `…|…|<COMANDO>|…`: **CALL**
 ( richiama un cassetto, e ritenta per cinque minuti finché la piazzola è occupata ), **RETURN** e **STATUS**.
+Dalla v1.10 `GET /stato` risponde con la versione senza toccare il cassetto: dice se l'agent è vivo.
 
 La configurazione è il `config.ini` **nella cartella da cui si lancia l'agent**:
 
@@ -94,31 +97,45 @@ scartano, come per 400 e 401.
 PyInstaller produce l'eseguibile solo per il sistema su cui gira, e lo compila **GitHub Actions su un runner
 Windows** ( `.github/workflows/build.yml` ). Parte da solo a ogni push su `master` che tocca `glisweb-agent.py`,
 oppure a mano da *Actions → build → Run workflow*. L'exe si scarica dagli artifact della run
-( `glisweb-agent-<versione>` ), insieme a `config.ini` e `icon.png`. La build fallisce se nell'exe manca
-`cryptography`, senza la quale l'aggiornamento automatico rifiuterebbe tutto.
+( `glisweb-agent-<versione>` ), insieme a `config.ini`, `icon.png` e all'installer. La build fallisce se nell'exe
+manca `cryptography`, senza la quale l'aggiornamento automatico rifiuterebbe tutto, o se l'installer non riesce
+a installare e avviare l'agent sul runner ( senza agent precedente: il ripristino lì non si prova ).
 
-Prima di una versione nuova si **alza `versione`** in testa allo script ( p.es. da `'0.1.9'` a `'0.1.10'` ). ⚠ È
-la versione che l'agent confronta con quella pubblicata: se il manifest dice `0.1.10` e l'exe dentro dice ancora
-`0.1.9`, l'agent riscarica e reinstalla lo stesso file a ogni controllo.
+Prima di una versione nuova si **alza `versione`** in testa allo script ( p.es. da `'0.1.10'` a `'0.1.11'` ). ⚠ È
+la versione che l'agent confronta con quella pubblicata: se il manifest dice `0.1.11` e l'exe dentro dice ancora
+`0.1.10`, l'agent riscarica e reinstalla lo stesso file a ogni controllo.
 
 A mano, su un PC Windows: `pip install flask plyer pystray pillow pywin32 pyinstaller cryptography`, poi
 `winbuild.bat`; l'exe è in `dist/`.
 
 ## installare l'agent la prima volta
 
-L'aggiornamento automatico parte dalla v1.8: da una versione precedente si passa **a mano, una volta sola**,
-collegandosi al PC del cliente.
+L'aggiornamento automatico parte dalla v1.8: la prima installazione, o il passaggio da una versione precedente,
+la fa l'**installer**, una volta sola. Al cliente si manda uno zip con `glisweb-agent.exe`, `icon.png`,
+`installa.bat`, `installa.ps1` presi dall'artifact e il **suo** `config.ini` col segreto, **per link e non in
+allegato**: Gmail e Outlook bloccano gli zip con dentro `.exe` o `.bat`. Il cliente estrae lo zip e fa doppio clic
+su `installa.bat`; non servono i diritti di amministratore.
 
-1. chiudere l'agent in esecuzione ( icona vicino all'orologio, *esci* ), e conservarne la cartella così com'è per
-   poter tornare indietro;
-2. copiare nella stessa cartella l'exe nuovo **col nome che avrà sempre**, p.es. `agent.exe`: gli aggiornamenti
-   sostituiscono il file con quel nome, e il riavvio lo cerca lì;
-3. completare il `config.ini` con la sezione `[server]` e il segreto;
-4. avviare l'exe e controllare: notifica «GlisWeb Agent avviato», poi in `agent.log` le righe *log remoto attivo*
-   e *aggiornamento automatico attivo*, e in `var/log/remoti/<nome del PC>/` sul deploy le stesse righe;
-5. fare un richiamo di prova, e trovarlo in tutti e due i log;
-6. verificare come l'agent parte all'accensione del PC ( esecuzione automatica o cartella *Esecuzione
-   automatica* ) e puntarlo all'exe nuovo.
+`installa.ps1` installa per l'utente corrente in `%LOCALAPPDATA%\GlisWebAgent\`:
+
+1. chiude l'agent in esecuzione ( `agent<cifre>.exe` o `glisweb-agent.exe` ), ricordandosi dove stava;
+2. mette da parte la sua esecuzione automatica: i collegamenti in *Esecuzione automatica* finiscono in
+   `GlisWebAgent\avvio-precedente\`, le voci `Run` del registro si tolgono; le operazioni pianificate le segnala e
+   basta;
+3. copia i file, toglie il segno «scaricato da Internet» e controlla che l'antivirus non abbia messo l'exe in
+   quarantena, il guasto più probabile con un exe PyInstaller;
+4. crea il collegamento *GlisWeb Agent* in *Esecuzione automatica*, con la cartella di lavoro giusta;
+5. avvia l'agent e aspetta fino a un minuto che risponda su `http://127.0.0.1:5000/stato`.
+
+Se un passo fallisce **rimette l'agent precedente com'era** ( collegamenti, voci `Run`, processo ): il cliente non
+resta mai senza agent. Ogni passo si scrive in `installa.log` accanto allo script e, col segreto nel `config.ini`,
+anche sul deploy, nel canale `installer` ( in `var/log/remoti/` del deploy, cartella del PC, file
+`glisweb-agent.installer.<livello>.<anno e mese>.log` ). L'ultima riga dice *installazione riuscita* con la
+versione, oppure *installazione NON riuscita* col passo. Dopo, parlano i log dell'agent: *avvio GlisWeb agent v…*,
+*log remoto attivo*, *aggiornamento automatico attivo*.
+
+La cartella dell'agent precedente non si tocca, per poter tornare indietro anche a mano. L'installer serve per la
+prima volta: le versioni successive arrivano con l'aggiornamento automatico, sotto.
 
 ## pubblicare un aggiornamento
 
@@ -127,11 +144,11 @@ un minuto dopo l'avvio e poi ogni sei ore.
 
 1. compilare l'exe con la versione alzata ( sopra );
 2. **firmarlo sul PC dove sta la chiave privata**:
-   `python _aggiornamenti.firma.py firma ~/chiavi/glisweb-agent/privata.pem glisweb-agent 0.1.10 glisweb-agent.exe --file agent.exe --uscita pubblica`
+   `python _aggiornamenti.firma.py firma ~/chiavi/glisweb-agent/privata.pem glisweb-agent 0.1.11 glisweb-agent.exe --file glisweb-agent.exe --uscita pubblica`
    — il `--file` è il nome con cui l'exe è installato sul PC, la versione è quella scritta nello script;
 3. controllare: `python _aggiornamenti.firma.py verifica pubblica glisweb-agent <chiave pubblica>`;
 4. copiare sul deploy, in `var/spool/aggiornamenti/glisweb-agent/` ( fuori dalla document root servita
-   direttamente ), **prima `agent.exe` e poi `manifest.json`**, e dare la cartella a `www-data`;
+   direttamente ), **prima `glisweb-agent.exe` e poi `manifest.json`**, e dare la cartella a `www-data`;
 5. seguire l'installazione nei log remoti: *trovata la v…*, *installata la v… al posto della v…, riavvio*, poi
    *avvio GlisWeb agent v…* e *aggiornamento a v… completato*.
 
