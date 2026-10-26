@@ -1,0 +1,44 @@
+# compila glisweb-agent.exe su un runner Windows, perche' PyInstaller non fa cross-compilazione;
+# l'exe esce come artifact della run, da firmare poi con _aggiornamenti.firma.py e la chiave privata
+name: build
+
+on:
+  push:
+    branches: [ master ]
+    paths: [ 'glisweb-agent.py', '.github/workflows/build.yml' ]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: dipendenze
+        run: python -m pip install flask plyer pystray pillow pywin32 cryptography pyinstaller
+
+      - name: versione
+        id: versione
+        run: echo "versione=$( sed -n "s/^versione = '\(.*\)'.*$/\1/p" glisweb-agent.py )" >> "$GITHUB_OUTPUT"
+
+      - name: compilazione
+        run: python -m PyInstaller --onefile --noconsole --hidden-import plyer.platforms.win.notification -w glisweb-agent.py
+
+      # senza cryptography nell'exe l'aggiornamento automatico rifiuta tutto, e lo si scoprirebbe solo sul PC del cliente
+      - name: controllo
+        run: pyi-archive_viewer -l -r dist/glisweb-agent.exe | grep -q cryptography
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glisweb-agent-${{ steps.versione.outputs.versione }}
+          path: |
+            dist/glisweb-agent.exe
+            config.ini
+            icon.png
